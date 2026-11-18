@@ -15,7 +15,7 @@ describe('步骤二：模拟数据与示例 Schema', () => {
   })
 
   it('五条示例覆盖所需指标、分析及对比口径', () => {
-    expect(schemaExamples).toHaveLength(5)
+    expect(schemaExamples.length).toBeGreaterThanOrEqual(5)
     const [one, two, three, four, five] = schemaExamples.map(example => example.schema)
     expect(one.charts.map(chart => chart.metric)).toEqual(['price', 'volume'])
     expect(one.analysis).toContainEqual({ type: 'largestDeclines', count: 3, display: 'ranking' })

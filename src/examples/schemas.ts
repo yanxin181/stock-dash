@@ -58,4 +58,15 @@ export const schemaExamples: SchemaExample[] = [
       dataSource: DATA_SOURCE, dataAsOf: DATA_AS_OF,
     },
   },
+  {
+    instruction: '分析 A 公司最近 30 个交易日，展示股价与 5 日均线、涨跌天数占比，以及成交量与涨跌幅的关系。',
+    schema: {
+      title: 'A 公司近 30 个交易日多维分析', stocks: ['A'], timeRange: { type: 'tradingDays', count: 30 },
+      charts: [
+        { title: '收盘价与 5 日均线', metric: 'price', type: 'line', unit: '元', ma5: true },
+        { title: '涨跌天数分布', metric: 'changeDistribution', type: 'donut', unit: '天' },
+        { title: '成交量与每日涨跌幅关系', metric: 'volumeChange', type: 'scatter', unit: '万股 / %' },
+      ], analysis: [], dataSource: DATA_SOURCE, dataAsOf: DATA_AS_OF,
+    },
+  },
 ]

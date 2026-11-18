@@ -2,10 +2,12 @@ import type { StockId } from './stock'
 
 /** 阶段二模型输出和本地解析将共用此结构；运行时校验在步骤三实现。 */
 export type ChartSpec =
-  | { title: string; metric: 'price'; type: 'line' | 'bar'; unit: '元' }
+  | { title: string; metric: 'price'; type: 'line' | 'bar'; unit: '元'; ma5?: boolean }
   | { title: string; metric: 'volume'; type: 'line' | 'bar'; unit: '万股' }
   | { title: string; metric: 'dailyChange'; type: 'line' | 'bar'; unit: '%' }
   | { title: string; metric: 'relativePrice'; type: 'line'; unit: '基准点'; base: 100 }
+  | { title: string; metric: 'changeDistribution'; type: 'donut'; unit: '天' }
+  | { title: string; metric: 'volumeChange'; type: 'scatter'; unit: '万股 / %' }
 
 export type AnalysisSpec =
   | { type: 'priceExtrema'; marks: ('highest' | 'lowest')[] }

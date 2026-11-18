@@ -42,16 +42,17 @@ export function validateDashboardSchema(input: unknown): SchemaValidationResult 
     const path = `charts[${i}]`
     if (!isObject(chart)) { issue(path, '图表配置必须是对象。'); return }
     if (!nonEmptyString(chart.title)) issue(`${path}.title`, '请输入图表标题。')
-    const units: Record<string, string> = { price: '元', volume: '万股', dailyChange: '%', relativePrice: '基准点' }
+    const units: Record<string, string> = { price: '元', volume: '万股', dailyChange: '%', relativePrice: '基准点', changeDistribution: '天', volumeChange: '万股 / %' }
     const metric = typeof chart.metric === 'string' && Object.hasOwn(units, chart.metric) ? chart.metric : undefined
-    if (!metric) issue(`${path}.metric`, '不支持该指标；可选股价、成交量、每日涨跌幅或相对股价。')
-    if (chart.type !== 'line' && chart.type !== 'bar') issue(`${path}.type`, '图表类型仅支持折线图或柱状图。')
+    if (!metric) issue(`${path}.metric`, '不支持该指标；可选股价、成交量、每日涨跌幅、相对股价、涨跌天数或量价关系。')
+    if (metric === 'changeDistribution' ? chart.type !== 'donut' : metric === 'volumeChange' ? chart.type !== 'scatter' : chart.type !== 'line' && chart.type !== 'bar') issue(`${path}.type`, '图表类型与指标不匹配。')
     if (metric && chart.unit !== units[metric]) issue(`${path}.unit`, `该指标的单位应为「${units[metric]}」。`)
     if (!metric && !nonEmptyString(chart.unit)) issue(`${path}.unit`, '请提供图表单位。')
     if (metric === 'relativePrice') {
       if (chart.type !== 'line') issue(`${path}.type`, '相对股价走势须使用折线图。')
       if (chart.base !== 100) issue(`${path}.base`, '相对股价基准必须为 100。')
     }
+    if (chart.ma5 !== undefined && (metric !== 'price' || chart.type !== 'line' || typeof chart.ma5 !== 'boolean')) issue(`${path}.ma5`, '5 日均线仅可叠加在股价折线图上。')
   })
 
   if (!Array.isArray(input.analysis)) issue('analysis', '分析配置必须是数组，可为空数组。')

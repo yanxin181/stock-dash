@@ -60,6 +60,26 @@ describe('数据筛选、计算与结论', () => {
     expect(top.analyses[0].points.map(p => p.value)).toEqual([10, 9, 7])
     expect(top.charts[0].series[0].values).toEqual([9, 7, 10])
   })
+  it('成交量排名结论比较区间均值和排名集中度，并与图表一致', () => {
+    const input = schema(3); input.stocks = ['A']; input.analysis = [{ type: 'highestVolume', count: 2, display: 'ranking' }]
+    const data = run(input)
+    expect(data.charts[0].series[0].values).toEqual([9, 7, 10])
+    expect(data.analyses[0].points).toEqual([{ date: '2026-01-04', value: 10 }, { date: '2026-01-02', value: 9 }])
+    expect(data.conclusions[0]).toContain('区间日均成交量为 8.67 万股')
+    expect(data.conclusions[0]).toContain('最高成交量为 10.00 万股（2026-01-04）')
+    expect(data.conclusions[0]).toContain('比日均水平高 15.38%')
+    expect(data.conclusions[0]).toContain('排名前 2 个交易日的成交量合计占区间总成交量的 73.08%')
+  })
+  it('成交量全为零时说明无法计算比例，数量不足时报告实际条数', () => {
+    const input = schema(3); input.stocks = ['A']; input.analysis = [{ type: 'highestVolume', count: 5, display: 'ranking' }]
+    const zeroRecords = records.filter(row => row.stock === 'A').map(row => ({ ...row, volume: 0 }))
+    const data = run(input, zeroRecords)
+    expect(data.conclusions[0]).toContain('区间日均成交量为 0.00 万股')
+    expect(data.conclusions[0]).toContain('无法计算相对差异')
+    expect(data.conclusions[0]).toContain('无法计算排名占比')
+    expect(data.conclusions[0]).toContain('实际符合条件 3 条')
+    expect(data.conclusions[0]).not.toMatch(/NaN|Infinity/)
+  })
   it('双股票按日期对齐，缺失值为空且相对走势各自归一化', () => {
     const data = run(schema(4))
     expect(data.charts[0].dates).toEqual(['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04'])

@@ -30,6 +30,16 @@ export function parseInstruction(input: string): ParseResult {
   text = text.replace(ranges[0][0], ' ')
   if (!Number.isSafeInteger(days) || days < 2 || days > 60) return fail('交易日数量须为 2 至 60 的整数。')
 
+  const hasMa5 = /(?:5|五)日(?:移动平均(?:价|线)?|均线)/.test(text)
+  text = text.replace(/(?:5|五)日(?:移动平均(?:价|线)?|均线)/g, ' ')
+  const distribution = /涨跌天数(?:占比|分布|统计)?|上涨下跌(?:和持平)?天数(?:占比|分布|统计)?/.test(text)
+  text = text.replace(/涨跌天数(?:占比|分布|统计)?|上涨下跌(?:和持平)?天数(?:占比|分布|统计)?/g, ' ')
+  const scatter = /(?:成交量(?:与|和|及)每日?涨跌幅|成交量(?:与|和|及)涨跌幅|量价)(?:的)?(?:关系|散点图)|量价散点图/.test(text)
+  text = text.replace(/(?:成交量(?:与|和|及)每日?涨跌幅|成交量(?:与|和|及)涨跌幅|量价)(?:的)?(?:关系|散点图)|量价散点图/g, ' ')
+  if (/环形图|饼图/.test(text) && !distribution) return fail('请指定环形图要展示的指标，例如涨跌天数占比。')
+  if (/散点图/.test(text) && !scatter) return fail('请指定散点图要展示成交量与涨跌幅的关系。')
+  text = text.replace(/环形图|饼图|散点图/g, ' ')
+
   const analysis: AnalysisSpec[] = []
   const declines = [...text.matchAll(/跌幅最大(?:的)?(\d+)个?交易日/g)]
   const volumes = [...text.matchAll(/成交量最高(?:的)?(\d+)个?交易日/g)]
@@ -70,7 +80,7 @@ export function parseInstruction(input: string): ParseResult {
   }
 
   const comparison = /对比|比较/.test(text)
-  const hasPrice = /股价|收盘价/.test(text) || highest || lowest
+  const hasPrice = /股价|收盘价/.test(text) || highest || lowest || hasMa5
   hasVolume ||= /成交量/.test(text)
   const hasChange = /涨跌幅|每日涨幅|每日跌幅/.test(text)
   const dailyChange = /每日涨跌幅|每日涨幅|每日跌幅/.test(text)
@@ -84,13 +94,16 @@ export function parseInstruction(input: string): ParseResult {
   const line = /折线图/.test(text), bar = /柱状图/.test(text)
   if (line && bar) return fail('请只指定一种图表类型，或分别提出需求。')
   if (relativePrice && bar) return fail('两家公司相对股价对比仅支持折线图。')
+  if (hasMa5 && (bar || relativePrice)) return fail('5 日均线目前仅支持叠加单只股票的股价折线图。')
   const chartType = line ? 'line' : bar ? 'bar' : undefined
   const charts: ChartSpec[] = []
   if (relativePrice) charts.push({ title: '相对股价走势', metric: 'relativePrice', type: 'line', unit: '基准点', base: 100 })
-  else if (hasPrice) charts.push({ title: '收盘价走势', metric: 'price', type: chartType ?? 'line', unit: '元' })
+  else if (hasPrice) charts.push({ title: hasMa5 ? '收盘价与 5 日均线' : '收盘价走势', metric: 'price', type: chartType ?? 'line', unit: '元', ...(hasMa5 ? { ma5: true } : {}) })
   if (hasVolume) charts.push({ title: '成交量', metric: 'volume', type: chartType ?? 'bar', unit: '万股' })
   if (showDailyChange) charts.push({ title: '每日涨跌幅', metric: 'dailyChange', type: chartType ?? 'bar', unit: '%' })
-  if (!charts.length) return fail('请指定支持的指标：股价、成交量或每日涨跌幅。')
+  if (distribution) charts.push({ title: '涨跌天数分布', metric: 'changeDistribution', type: 'donut', unit: '天' })
+  if (scatter) charts.push({ title: '成交量与每日涨跌幅关系', metric: 'volumeChange', type: 'scatter', unit: '万股 / %' })
+  if (!charts.length) return fail('请指定支持的指标：股价、成交量、每日涨跌幅、涨跌天数或量价关系。')
 
   // 只消耗已识别的表达，剩余文字表明含有未知要求或不支持的指标。
   text = text.replace(/每日涨跌幅|每日涨幅|每日跌幅|涨跌幅|股价|收盘价|成交量|折线图|柱状图/g, ' ')

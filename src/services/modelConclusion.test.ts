@@ -15,13 +15,13 @@ describe('基于计算事实的模型结论', () => {
   it('从同一次分析生成含公司、日期、数值及单位的事实，按模型选择顺序组装', async () => {
     const data = result(4)
     const facts = extractConclusionFacts(data)
-    expect(facts).toHaveLength(2)
+    expect(facts).toHaveLength(4)
     expect(facts[0].text).toContain('A 公司')
     expect(facts[1].text).toContain('B 公司')
     for (const fact of facts) { expect(fact.text).toMatch(/\d{4}-\d{2}-\d{2} 至 \d{4}-\d{2}-\d{2}/); expect(fact.text).toMatch(/[-+]?\d+\.\d{2}%/) }
     const fetchMock = mock({ factIds: ['f2', 'f1'] })
     const response = await generateModelConclusion(data, fetchMock)
-    expect(response).toEqual({ usedModel: true, conclusions: [facts[1].text, facts[0].text] })
+    expect(response).toEqual({ usedModel: true, conclusions: [facts[1].text, facts[0].text, facts[2].text, facts[3].text] })
     expect(JSON.parse(vi.mocked(fetchMock).mock.calls[0][1]!.body as string)).toEqual({ facts })
   })
   it('没有分析项时从图表对应的数据生成事实，不采信模型提供的图表标题', () => {
@@ -30,8 +30,18 @@ describe('基于计算事实的模型结论', () => {
     data.schema.charts[0].title = '股价明天必涨，建议买入'
     const facts = extractConclusionFacts(data)
     const row = data.stocks[0].rows.at(-1)!
-    expect(facts[0].text).toBe(`B 公司 ${row.date} 的收盘价为 ${row.close.toFixed(2)} 元。`)
+    expect(facts[0].text).toContain(`B 公司收盘价从`)
+    expect(facts[0].text).toContain(`${row.close.toFixed(2)} 元`)
     expect(facts[0].text).not.toContain('建议')
+  })
+  it('模型选择成交量事实时使用程序计算的比较和区间占比', async () => {
+    const data = result(3)
+    const facts = extractConclusionFacts(data)
+    expect(facts[0].text).toContain('区间日均成交量')
+    expect(facts[0].text).toContain('比日均水平高')
+    expect(facts[0].text).toContain('区间总成交量')
+    const output = await generateModelConclusion(data, mock({ factIds: ['f1'] }))
+    expect(output.conclusions).toEqual(facts.map(fact => fact.text))
   })
   it.each([
     { factIds: ['missing'] },

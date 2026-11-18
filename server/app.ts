@@ -46,8 +46,7 @@ async function requestModel(config: ModelConfig, system: string, payload: unknow
     }
     let envelope: unknown
     try { envelope = JSON.parse(await readLimited(response)) } catch (error) {
-      if (error instanceof WencaiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
-    if (error instanceof ApiError) throw error
+      if (error instanceof ApiError) throw error
       if (controller.signal.aborted) throw new ApiError(504, 'TIMEOUT', '模型请求超时，请稍后重试。')
       throw new ApiError(502, 'INVALID_RESPONSE', '模型返回了无效响应。')
     }
@@ -58,7 +57,6 @@ async function requestModel(config: ModelConfig, system: string, payload: unknow
     if (typeof content !== 'string') throw new ApiError(502, 'INVALID_RESPONSE', '模型响应缺少有效内容。')
     try { return JSON.parse(content) } catch { throw new ApiError(502, 'INVALID_RESPONSE', '模型没有返回有效 JSON。') }
   } catch (error) {
-    if (error instanceof WencaiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
     if (error instanceof ApiError) throw error
     if (controller.signal.aborted) throw new ApiError(504, 'TIMEOUT', '模型请求超时，请稍后重试。')
     throw new ApiError(502, 'NETWORK_ERROR', '无法连接模型服务，请检查网络和服务地址。')
@@ -98,7 +96,7 @@ export function createApp(config: ModelConfig, fetchImpl: Fetch = fetch) {
     try {
       if (!isObject(req.body) || Object.keys(req.body).some(k => k !== 'facts') || !Array.isArray(req.body.facts) || req.body.facts.length < 1 || req.body.facts.length > 50 || !req.body.facts.every((fact: unknown) => isObject(fact) && boundedText(fact.id, 100) && boundedText(fact.text, 500) && Object.keys(fact).every(k => ['id', 'text'].includes(k)))) throw new ApiError(400, 'INVALID_INPUT', '请提供 1 至 50 条含 id 和 text 的精简事实。')
       if (new Set(req.body.facts.map((fact: JsonObject) => fact.id)).size !== req.body.facts.length) throw new ApiError(400, 'INVALID_INPUT', '事实 ID 不能重复。')
-      const result = await requestModel(config, '只从给定事实中选择最有代表性的 ID，按结论呈现顺序排列，返回且仅返回 JSON：{"factIds":["事实ID"]}。不改写事实，不输出额外字段、解释、预测、原因或建议。', req.body, fetchImpl)
+      const result = await requestModel(config, '为看板结论安排事实 ID 的顺序，覆盖给定的全部公司、图表和分析结果。优先呈现整体区间变化，再呈现分布、排名和其他细节。每个 ID 只出现一次，返回且仅返回 JSON：{"factIds":["事实ID"]}。不得改写或合并事实，不得输出额外字段、解释、预测、原因或建议。', req.body, fetchImpl)
       const ids = new Set(req.body.facts.map((fact: JsonObject) => fact.id))
       if (!isObject(result) || Object.keys(result).length !== 1 || !Array.isArray(result.factIds) || result.factIds.length < 1 || result.factIds.length > ids.size || !result.factIds.every((id: unknown) => typeof id === 'string' && ids.has(id)) || new Set(result.factIds).size !== result.factIds.length) throw new ApiError(502, 'INVALID_RESPONSE', '模型返回的事实引用无效。')
       res.json(result)

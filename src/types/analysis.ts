@@ -4,6 +4,7 @@ import type { StockId, StockRecord } from './stock'
 export interface CalculatedRow extends StockRecord {
   dailyChange: number | null
   relativePrice: number | null
+  ma5: number | null
 }
 export interface StockAnalysis {
   stock: StockId
@@ -14,7 +15,7 @@ export interface ValuePoint { date: string; value: number; label?: 'highest' | '
 export interface ChartData {
   spec: ChartSpec
   dates: string[]
-  series: { stock: StockId; values: (number | null)[] }[]
+  series: { stock: StockId; values: (number | null)[]; ma5?: (number | null)[]; distribution?: { rise: number; fall: number; flat: number; missing: number }; scatter?: { date: string; volume: number; change: number }[] }[]
 }
 export interface AnalysisResult {
   spec: AnalysisSpec

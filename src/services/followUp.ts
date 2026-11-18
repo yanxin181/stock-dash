@@ -50,7 +50,7 @@ export function applyFollowUp(input: string, current?: DashboardSchema): FollowU
     // 已有目标指标时保留原图，移除源图，避免出现两张同指标图。
     const targetExists = next.charts.some(chart => matchesMetric(chart, to))
     const charts = targetExists ? next.charts.filter(chart => !matchesMetric(chart, from))
-      : next.charts.map(chart => matchesMetric(chart, from) ? makeChart(to, chart.type) : chart)
+      : next.charts.map(chart => matchesMetric(chart, from) ? makeChart(to, chart.type === 'bar' ? 'bar' : 'line') : chart)
     const analysis = next.analysis.filter(item => !(
       (from === 'volume' && item.type === 'highestVolume') ||
       (from === 'price' && (item.type === 'priceExtrema' || item.type === 'periodChange')) ||
@@ -66,8 +66,10 @@ export function applyFollowUp(input: string, current?: DashboardSchema): FollowU
     if (!indices.length) return error('当前看板没有指定的图表，请确认指标或图表类型。')
     if (!requested && !sourceType && indices.length !== 1) return error('当前看板有多张图，请指定要修改的指标或原图表类型。')
     if (targetType === 'bar' && indices.some(({ chart }) => chart.metric === 'relativePrice')) return error('双股票相对股价对比只支持折线图。')
+    if (targetType === 'bar' && indices.some(({ chart }) => chart.metric === 'price' && chart.ma5)) return error('5 日均线只能叠加在股价折线图上，请先明确是否移除均线。')
+    if (indices.some(({ chart }) => chart.type === 'donut' || chart.type === 'scatter')) return error('涨跌天数和量价关系图不能直接切换为折线图或柱状图，请指定其他图表。')
     const selected = new Set(indices.map(item => item.index))
-    next = { ...next, charts: next.charts.map((chart, index): ChartSpec => selected.has(index) && chart.metric !== 'relativePrice' ? { ...chart, type: targetType } : chart) }
+    next = { ...next, charts: next.charts.map((chart, index): ChartSpec => selected.has(index) && (chart.metric === 'price' || chart.metric === 'volume' || chart.metric === 'dailyChange') ? { ...chart, type: targetType } : chart) }
   } else if (extrema) {
     const marks: ('highest' | 'lowest')[] = []
     for (const value of [extrema[1], extrema[2]]) {

@@ -2,6 +2,7 @@ import { stockRecords } from '../data/stocks'
 import type { DashboardComputation, ChartData, StockAnalysis, AnalysisResult, ValuePoint } from '../types/analysis'
 import type { StockRecord } from '../types/stock'
 import { validateDashboardSchema } from './validateSchema'
+import { describeChangeDistribution } from './conclusionText'
 
 const format = (value: number) => value.toFixed(2)
 const withSign = (value: number) => `${value > 0 ? '+' : ''}${format(value)}%`
@@ -15,7 +16,8 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
   const schema = checked.data
   const warnings: string[] = []
   const stocks: StockAnalysis[] = []
-  const requiresDaily = schema.charts.some(chart => chart.metric === 'dailyChange') || schema.analysis.some(a => a.type === 'largestGain' || a.type === 'largestDeclines')
+  const requiresDaily = schema.charts.some(chart => chart.metric === 'dailyChange' || chart.metric === 'changeDistribution' || chart.metric === 'volumeChange') || schema.analysis.some(a => a.type === 'largestGain' || a.type === 'largestDeclines')
+  const requiresMa5 = schema.charts.some(chart => chart.metric === 'price' && chart.ma5)
   const requiresRelative = schema.charts.some(chart => chart.metric === 'relativePrice')
   const requiresPeriod = schema.analysis.some(a => a.type === 'periodChange')
 
@@ -31,10 +33,12 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
     const calculated = selected.map((row, i) => {
       const previous = rows[start + i - 1]
       return { ...row, dailyChange: previous && previous.close !== 0 ? (row.close - previous.close) / previous.close * 100 : null,
-        relativePrice: base !== 0 ? row.close / base * 100 : null }
+        relativePrice: base !== 0 ? row.close / base * 100 : null,
+        ma5: start + i >= 4 ? rows.slice(start + i - 4, start + i + 1).reduce((sum, item) => sum + item.close, 0) / 5 : null }
     })
     const unavailableDays = calculated.filter(row => row.dailyChange === null).length
-    if (requiresDaily && unavailableDays) warnings.push(`${stock} 公司有 ${unavailableDays} 个交易日缺少有效前一日价格，每日涨跌幅不可用且不参与排名。`)
+    if (requiresDaily && unavailableDays) warnings.push(`${stock} 公司有 ${unavailableDays} 个交易日缺少有效前一日价格，每日涨跌幅不可用且不参与统计、散点及排名。`)
+    if (requiresMa5 && calculated.some(row => row.ma5 === null)) warnings.push(`${stock} 公司部分交易日不足 5 条历史收盘价，5 日均线显示为空。`)
     if (base === 0 && (requiresRelative || requiresPeriod)) warnings.push(`${stock} 公司区间首日收盘价为零，相对走势及区间涨跌幅无法计算。`)
     stocks.push({ stock, rows: calculated, periodChange: base !== 0 ? (selected[selected.length - 1].close - base) / base * 100 : null })
   }
@@ -45,7 +49,7 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
     spec, dates,
     series: stocks.map(stock => {
       const byDate = new Map(stock.rows.map(row => [row.date, row]))
-      return { stock: stock.stock, values: dates.map(date => {
+      const values = dates.map(date => {
         const row = byDate.get(date)
         if (!row) return null
         switch (spec.metric) {
@@ -53,8 +57,17 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
           case 'volume': return row.volume
           case 'dailyChange': return row.dailyChange
           case 'relativePrice': return row.relativePrice
+          case 'changeDistribution': case 'volumeChange': return null
         }
-      }) }
+      })
+      const base = { stock: stock.stock, values }
+      if (spec.metric === 'price' && spec.ma5) return { ...base, ma5: dates.map(date => byDate.get(date)?.ma5 ?? null) }
+      if (spec.metric === 'changeDistribution') {
+        const changes = stock.rows.map(row => row.dailyChange)
+        return { ...base, distribution: { rise: changes.filter(value => value !== null && value > 0).length, fall: changes.filter(value => value !== null && value < 0).length, flat: changes.filter(value => value === 0).length, missing: changes.filter(value => value === null).length } }
+      }
+      if (spec.metric === 'volumeChange') return { ...base, scatter: stock.rows.flatMap(row => row.dailyChange === null ? [] : [{ date: row.date, volume: row.volume, change: row.dailyChange }]) }
+      return base
     }),
   }))
 
@@ -85,13 +98,35 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
       const message = points.length < count ? `请求 ${count} 条，实际符合条件 ${points.length} 条。` : undefined
       analyses.push({ spec, stock: stock.stock, unit, points, ...(message ? { message } : {}) })
       const display = points.map(point => `${point.date}（${volume ? format(point.value) : withSign(point.value)}${volume ? ' 万股' : ''}）`).join('、')
-      conclusions.push(`${prefix}${name}：${display || '无符合条件的数据'}。${message ?? ''}`)
+      if (volume && points.length) {
+        const total = rows.reduce((sum, row) => sum + row.volume, 0)
+        const average = total / rows.length
+        const highest = points[0]
+        const topTotal = points.reduce((sum, point) => sum + point.value, 0)
+        const comparison = Number.isFinite(average) && average > 0
+          ? highest.value === average ? '与日均水平相同' : `比日均水平高 ${format((highest.value / average - 1) * 100)}%`
+          : '区间日均成交量为零或不可计算，无法计算相对差异'
+        const share = Number.isFinite(total) && total > 0 && Number.isFinite(topTotal)
+          ? `排名前 ${points.length} 个交易日的成交量合计占区间总成交量的 ${format(topTotal / total * 100)}%。`
+          : '区间总成交量为零或不可计算，无法计算排名占比。'
+        conclusions.push(`${prefix}区间日均成交量为 ${Number.isFinite(average) ? format(average) : '不可计算'}${Number.isFinite(average) ? ' 万股' : ''}；最高成交量为 ${format(highest.value)} 万股（${highest.date}），${comparison}。${share}${message ?? ''}`)
+      } else conclusions.push(`${prefix}${name}：${display || '无符合条件的数据'}。${message ?? ''}`)
     }
   }
   if (!conclusions.length) {
     for (const stock of stocks) {
       const chart = schema.charts[0]
       const last = stock.rows[stock.rows.length - 1]
+      if (chart.metric === 'changeDistribution') {
+        const changes = stock.rows.map(row => row.dailyChange)
+        conclusions.push(describeChangeDistribution(stock.stock, { rise: changes.filter(value => value !== null && value > 0).length, fall: changes.filter(value => value !== null && value < 0).length, flat: changes.filter(value => value === 0).length, missing: changes.filter(value => value === null).length }))
+        continue
+      }
+      if (chart.metric === 'volumeChange') {
+        const count = stock.rows.filter(row => row.dailyChange !== null).length
+        conclusions.push(`${stock.stock} 公司成交量与每日涨跌幅散点图包含 ${count} 个有效交易日。`)
+        continue
+      }
       const value = chart.metric === 'price' ? last.close : chart.metric === 'volume' ? last.volume : chart.metric === 'dailyChange' ? last.dailyChange : last.relativePrice
       const metricName = { price: '收盘价', volume: '成交量', dailyChange: '每日涨跌幅', relativePrice: '相对股价' }[chart.metric]
       conclusions.push(value === null ? `${stock.stock} 公司 ${last.date} 的${metricName}无法计算。` : `${stock.stock} 公司 ${last.date} 的${metricName}为 ${format(value)} ${chart.unit}。`)

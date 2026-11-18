@@ -15,9 +15,11 @@ const changeClass = (value: number | null | undefined) => value == null ? '' : v
     <div v-if="result.warnings.length" class="data-warning" role="status"><p v-for="warning in result.warnings" :key="warning">{{ warning }}</p></div>
     <div class="chart-list">
       <section v-for="(chart, index) in result.charts" :key="index" class="chart-card">
-        <div class="chart-heading"><div><h4>{{ chart.spec.title }}</h4><p>单位：{{ chart.spec.unit }}<template v-if="chart.spec.metric === 'relativePrice'"> · 各自区间首日 = 100</template></p></div><span>{{ chart.spec.type === 'line' ? '折线图' : '柱状图' }}</span></div>
+        <div class="chart-heading"><div><h4>{{ chart.spec.title }}</h4><p><template v-if="chart.spec.type === 'scatter'">横轴：成交量（万股） · 纵轴：每日涨跌幅（%）</template><template v-else>单位：{{ chart.spec.unit }}</template><template v-if="chart.spec.metric === 'relativePrice'"> · 各自区间首日 = 100</template><template v-if="chart.spec.metric === 'price' && chart.spec.ma5"> · 虚线：5 日均线</template></p></div><span>{{ { line: '折线图', bar: '柱状图', donut: '环形图', scatter: '散点图' }[chart.spec.type] }}</span></div>
         <StockChart :chart="chart" :analyses="result.analyses" />
-        <p class="chart-key"><template v-if="chart.spec.metric === 'dailyChange'">红色上涨 · 绿色下跌 · 灰色持平 · </template>颜色加深及金色描边表示分析关注点</p>
+        <p v-if="chart.spec.type === 'donut'" class="chart-key"><span v-for="series in chart.series" :key="series.stock">{{ series.stock }} 公司：上涨 {{ series.distribution?.rise }} 天、下跌 {{ series.distribution?.fall }} 天、持平 {{ series.distribution?.flat }} 天，{{ series.distribution?.missing }} 天不可计算。<template v-if="series.distribution && series.distribution.rise + series.distribution.fall + series.distribution.flat === 0">无可用涨跌幅数据。</template> </span></p>
+        <p v-else-if="chart.spec.type === 'scatter'" class="chart-key"><span v-for="series in chart.series" :key="series.stock">{{ series.stock }} 公司：{{ series.scatter?.length ?? 0 }} 个有效交易日。 </span>缺少有效前收盘价的交易日不显示。</p>
+        <p v-else class="chart-key"><template v-if="chart.spec.metric === 'dailyChange'">红色上涨 · 绿色下跌 · 灰色持平 · </template>颜色加深及金色描边表示分析关注点</p>
       </section>
     </div>
     <div v-if="result.analyses.length" class="analysis-grid">

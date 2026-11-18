@@ -41,7 +41,7 @@ export async function runAnalysis(input: string, mode: AnalysisMode, current: Da
     const conclusion = await generateModelConclusion(computed.data, fetchImpl)
     computed.data.conclusions = conclusion.conclusions
     usedFallback = !conclusion.usedModel
-    content = conclusion.notice ?? '已根据你的需求生成分析看板，结论由程序根据模型选择的事实组装。'
+    content = conclusion.notice ?? '已根据你的需求生成分析看板，结论由程序计算并结合模型建议的顺序展示。'
   }
   return { dashboard: computed.data, content, usedFallback }
 }
