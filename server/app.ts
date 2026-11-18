@@ -2,8 +2,9 @@ import express from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import { validateDashboardSchema } from '../src/services/validateSchema.js'
 import { schemaPrompt } from './schemaPrompt.js'
+import { fetchWencaiQuotes, WencaiError } from './wencai.js'
 
-export interface ModelConfig { apiKey?: string; baseUrl: string; model: string; timeoutMs: number }
+export interface ModelConfig { apiKey?: string; baseUrl: string; model: string; timeoutMs: number; wencaiApiKey?: string }
 type Fetch = typeof fetch
 type JsonObject = Record<string, unknown>
 const isObject = (value: unknown): value is JsonObject => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -45,7 +46,8 @@ async function requestModel(config: ModelConfig, system: string, payload: unknow
     }
     let envelope: unknown
     try { envelope = JSON.parse(await readLimited(response)) } catch (error) {
-      if (error instanceof ApiError) throw error
+      if (error instanceof WencaiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
+    if (error instanceof ApiError) throw error
       if (controller.signal.aborted) throw new ApiError(504, 'TIMEOUT', '模型请求超时，请稍后重试。')
       throw new ApiError(502, 'INVALID_RESPONSE', '模型返回了无效响应。')
     }
@@ -56,6 +58,7 @@ async function requestModel(config: ModelConfig, system: string, payload: unknow
     if (typeof content !== 'string') throw new ApiError(502, 'INVALID_RESPONSE', '模型响应缺少有效内容。')
     try { return JSON.parse(content) } catch { throw new ApiError(502, 'INVALID_RESPONSE', '模型没有返回有效 JSON。') }
   } catch (error) {
+    if (error instanceof WencaiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
     if (error instanceof ApiError) throw error
     if (controller.signal.aborted) throw new ApiError(504, 'TIMEOUT', '模型请求超时，请稍后重试。')
     throw new ApiError(502, 'NETWORK_ERROR', '无法连接模型服务，请检查网络和服务地址。')
@@ -85,6 +88,12 @@ export function createApp(config: ModelConfig, fetchImpl: Fetch = fetch) {
       res.json(result)
     } catch (error) { next(error) }
   })
+  app.post('/api/wencai/quotes', async (req, res, next) => {
+    try {
+      const quotes = await fetchWencaiQuotes(req.body, config.wencaiApiKey, fetchImpl)
+      res.json({ source: '同花顺问财', priceBasis: '未确认', volumeUnit: '未确认', quotes })
+    } catch (error) { next(error) }
+  })
   app.post('/api/conclusion', async (req, res, next) => {
     try {
       if (!isObject(req.body) || Object.keys(req.body).some(k => k !== 'facts') || !Array.isArray(req.body.facts) || req.body.facts.length < 1 || req.body.facts.length > 50 || !req.body.facts.every((fact: unknown) => isObject(fact) && boundedText(fact.id, 100) && boundedText(fact.text, 500) && Object.keys(fact).every(k => ['id', 'text'].includes(k)))) throw new ApiError(400, 'INVALID_INPUT', '请提供 1 至 50 条含 id 和 text 的精简事实。')
@@ -96,6 +105,7 @@ export function createApp(config: ModelConfig, fetchImpl: Fetch = fetch) {
     } catch (error) { next(error) }
   })
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (error instanceof WencaiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
     if (error instanceof ApiError) return res.status(error.status).json({ error: { code: error.code, message: error.message } })
     if (isObject(error) && error.type === 'entity.too.large') return res.status(413).json({ error: { code: 'TOO_LARGE', message: '请求内容过大。' } })
     if (isObject(error) && error.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'INVALID_JSON', message: '请求 JSON 格式无效。' } })
