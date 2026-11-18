@@ -4,6 +4,7 @@ import AnalysisDashboard from './components/AnalysisDashboard.vue'
 import { schemaExamples } from './examples/schemas'
 import { parseInstruction } from './services/parseInstruction'
 import { analyzeDashboard } from './services/analyzeDashboard'
+import { applyFollowUp } from './services/followUp'
 import type { DashboardResult } from './types/analysis'
 import type { DashboardSchema } from './types/schema'
 
@@ -27,16 +28,11 @@ async function send() {
     busy.value = true
     try {
       stage.value = '理解需求 → 生成 Schema'; await nextTick()
-      const followDays = text.match(/^改为最近\s*(\d+)\s*个?交易日[。.!！]?$/)
-      const followMetric = /^把成交量改(?:成|为)涨跌幅[。.!！]?$/.test(text)
+      const followUp = applyFollowUp(text, current.value)
       let schema: DashboardSchema
-      if (current.value && followDays) {
-        const days = Number(followDays[1])
-        schema = { ...current.value, title: current.value.title.replace(/近 \d+ 个交易日/, `近 ${days} 个交易日`), timeRange: { type: 'tradingDays', count: days } }
-      } else if (current.value && followMetric) {
-        if (!current.value.charts.some(chart => chart.metric === 'volume')) throw new Error('当前看板没有成交量图表，请先生成包含成交量的看板。')
-        schema = { ...current.value, charts: current.value.charts.map(chart => chart.metric === 'volume' ? { title: '每日涨跌幅', metric: 'dailyChange', type: chart.type, unit: '%' } : chart), analysis: current.value.analysis.filter(item => item.type !== 'highestVolume') }
-      } else {
+      if (followUp.kind === 'error') throw new Error(`理解追问：${followUp.message}`)
+      if (followUp.kind === 'success') schema = followUp.schema
+      else {
         const parsed = parseInstruction(text)
         if (!parsed.success) throw new Error(`${parsed.stage}：${parsed.message}`)
         schema = parsed.schema
