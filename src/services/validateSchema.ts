@@ -78,6 +78,13 @@ export function validateDashboardSchema(input: unknown): SchemaValidationResult 
         break
       default: issue(`${path}.type`, '不支持该分析类型。')
     }
+    if (Array.isArray(input.charts)) {
+      const metrics = input.charts.filter(isObject).map(chart => chart.metric)
+      const priceChart = metrics.includes('price') || metrics.includes('relativePrice')
+      if (item.type === 'priceExtrema' && !priceChart) issue(path, '最高最低价标注需要股价或相对股价图表。')
+      if ((item.type === 'largestGain' || (item.type === 'largestDeclines' && item.display === 'mark')) && !priceChart && !metrics.includes('dailyChange')) issue(path, '涨跌幅标注需要股价、相对股价或每日涨跌幅图表。')
+      if (item.type === 'highestVolume' && item.display === 'mark' && !metrics.includes('volume')) issue(path, '成交量标注需要成交量图表。')
+    }
   })
   if (!nonEmptyString(input.dataSource)) issue('dataSource', '请提供数据来源。')
   if (!isDate(input.dataAsOf)) issue('dataAsOf', '数据截止日期须为有效的 YYYY-MM-DD 日期。')

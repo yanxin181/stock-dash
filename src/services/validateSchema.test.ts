@@ -64,4 +64,14 @@ describe('看板 Schema 运行时校验', () => {
     schema.analysis = [{ type: 'largestDeclines', count: 100, display: 'ranking' }]
     expect(validateDashboardSchema(schema).success).toBe(true)
   })
+  it('拒绝没有对应图表的标注，同时允许独立排名', () => {
+    const schema = valid()
+    schema.charts = [{ title: '成交量', metric: 'volume', type: 'bar', unit: '万股' }]
+    schema.analysis = [{ type: 'largestGain', count: 1, display: 'mark' }]
+    expect(paths(schema)).toContain('analysis[0]')
+    schema.analysis = [{ type: 'largestDeclines', count: 3, display: 'ranking' }]
+    expect(validateDashboardSchema(schema).success).toBe(true)
+    schema.analysis = [{ type: 'priceExtrema', marks: ['highest'] }]
+    expect(paths(schema)).toContain('analysis[0]')
+  })
 })

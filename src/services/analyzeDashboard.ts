@@ -93,7 +93,8 @@ export function analyzeDashboard(input: unknown, records: readonly StockRecord[]
       const chart = schema.charts[0]
       const last = stock.rows[stock.rows.length - 1]
       const value = chart.metric === 'price' ? last.close : chart.metric === 'volume' ? last.volume : chart.metric === 'dailyChange' ? last.dailyChange : last.relativePrice
-      conclusions.push(value === null ? `${stock.stock} 公司 ${last.date} 的${chart.title}无法计算。` : `${stock.stock} 公司 ${last.date} 的${chart.title}为 ${format(value)} ${chart.unit}。`)
+      const metricName = { price: '收盘价', volume: '成交量', dailyChange: '每日涨跌幅', relativePrice: '相对股价' }[chart.metric]
+      conclusions.push(value === null ? `${stock.stock} 公司 ${last.date} 的${metricName}无法计算。` : `${stock.stock} 公司 ${last.date} 的${metricName}为 ${format(value)} ${chart.unit}。`)
     }
   }
   return { success: true, data: { schema, stocks, charts, analyses, conclusions, warnings } }
