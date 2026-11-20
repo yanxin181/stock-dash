@@ -5,3 +5,12 @@ dist-server/
 .env
 .env.*
 !.env.example
+
+# Screenshot assets and exported files
+/image.png
+/image-[0-9].png
+/image-10.png
+/README.pdf
+/stock-dash.zip
+/聊天记录导出/
+/.gitignore
